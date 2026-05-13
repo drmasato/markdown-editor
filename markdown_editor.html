@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown Editor</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: #181825;
+    border-bottom: 1px solid #313244;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #cba6f7;
+    letter-spacing: 0.05em;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 6px;
+  }
+
+  .toolbar button {
+    background: #313244;
+    border: none;
+    color: #cdd6f4;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .toolbar button:hover { background: #45475a; }
+
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .pane-label {
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6c7086;
+    background: #181825;
+    border-bottom: 1px solid #313244;
+  }
+
+  #editor {
+    flex: 1;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: none;
+    border-right: 1px solid #313244;
+    padding: 20px;
+    font-family: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    resize: none;
+    outline: none;
+    tab-size: 2;
+  }
+
+  #preview {
+    flex: 1;
+    padding: 20px 28px;
+    overflow-y: auto;
+    background: #1e1e2e;
+    line-height: 1.75;
+  }
+
+  /* Markdown preview styles */
+  #preview h1, #preview h2, #preview h3,
+  #preview h4, #preview h5, #preview h6 {
+    color: #cba6f7;
+    margin: 1.2em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  #preview h1 { font-size: 1.8em; border-bottom: 1px solid #313244; padding-bottom: 0.3em; }
+  #preview h2 { font-size: 1.4em; border-bottom: 1px solid #313244; padding-bottom: 0.2em; }
+  #preview h3 { font-size: 1.15em; }
+
+  #preview p { margin: 0.7em 0; }
+
+  #preview a { color: #89b4fa; text-decoration: none; }
+  #preview a:hover { text-decoration: underline; }
+
+  #preview code {
+    background: #313244;
+    color: #a6e3a1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.88em;
+  }
+
+  #preview pre {
+    background: #11111b;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  #preview pre code {
+    background: none;
+    padding: 0;
+    color: #a6e3a1;
+    font-size: 13px;
+  }
+
+  #preview blockquote {
+    border-left: 3px solid #cba6f7;
+    margin: 1em 0;
+    padding: 4px 16px;
+    color: #a6adc8;
+    background: #181825;
+    border-radius: 0 6px 6px 0;
+  }
+
+  #preview ul, #preview ol {
+    padding-left: 1.6em;
+    margin: 0.6em 0;
+  }
+
+  #preview li { margin: 0.3em 0; }
+
+  #preview table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+  }
+
+  #preview th, #preview td {
+    border: 1px solid #45475a;
+    padding: 8px 12px;
+    text-align: left;
+  }
+
+  #preview th {
+    background: #313244;
+    color: #cba6f7;
+    font-weight: 600;
+  }
+
+  #preview tr:nth-child(even) { background: #181825; }
+
+  #preview hr {
+    border: none;
+    border-top: 1px solid #45475a;
+    margin: 1.5em 0;
+  }
+
+  #preview img { max-width: 100%; border-radius: 6px; }
+
+  .divider {
+    width: 4px;
+    background: #313244;
+    cursor: col-resize;
+    transition: background 0.15s;
+  }
+  .divider:hover { background: #cba6f7; }
+
+  .status {
+    font-size: 11px;
+    color: #6c7086;
+    padding: 6px 14px;
+    background: #181825;
+    border-top: 1px solid #313244;
+    display: flex;
+    gap: 16px;
+  }
+
+  .status span { color: #a6adc8; }
+
+  #file-input { display: none; }
+
+  .btn-open {
+    background: #45475a !important;
+    color: #cba6f7 !important;
+    border: 1px solid #cba6f7 !important;
+  }
+  .btn-open:hover { background: #585b70 !important; }
+
+  /* Drag-over overlay */
+  #editor.dragover {
+    background: #2a2a3e;
+    border: 2px dashed #cba6f7;
+  }
+
+  #drop-hint {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(30,30,46,0.88);
+    color: #cba6f7;
+    font-size: 18px;
+    font-weight: 600;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .editor-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Markdown Editor</h1>
+  <div class="toolbar">
+    <button onclick="insertMd('**', '**')"><b>B</b></button>
+    <button onclick="insertMd('*', '*')"><i>I</i></button>
+    <button onclick="insertMd('`', '`')">Code</button>
+    <button onclick="insertMd('\n```\n', '\n```')">Block</button>
+    <button onclick="insertLine('## ')">H2</button>
+    <button onclick="insertLine('- ')">List</button>
+    <button class="btn-open" onclick="document.getElementById('file-input').click()">ファイルを開く</button>
+    <button onclick="copyHtml()">HTML コピー</button>
+    <button onclick="downloadMd()">保存</button>
+  </div>
+  <input type="file" id="file-input" accept=".md,.txt,.markdown">
+</header>
+
+<div class="main">
+  <div class="pane">
+    <div class="pane-label" id="editor-label">Editor</div>
+    <div class="editor-wrap">
+      <div id="drop-hint">ここにファイルをドロップ</div>
+    <textarea id="editor" spellcheck="false" placeholder="# ここにMarkdownを入力...
+
+**太字**, *斜体*, `コード`
+
+- リスト項目
+- リスト項目
+
+> 引用文
+
+```python
+print('Hello, World!')
+```
+
+| 列1 | 列2 |
+|-----|-----|
+| A   | B   |
+"></textarea>
+    </div>
+  </div>
+
+  <div class="divider" id="divider"></div>
+
+  <div class="pane">
+    <div class="pane-label">Preview</div>
+    <div id="preview"></div>
+  </div>
+</div>
+
+<div class="status" id="status">
+  <span id="chars">文字数: 0</span>
+  <span id="lines">行数: 1</span>
+  <span id="words">単語数: 0</span>
+  <span id="filename"></span>
+</div>
+
+<script>
+  const editor = document.getElementById('editor');
+  const preview = document.getElementById('preview');
+
+  marked.setOptions({ breaks: true, gfm: true });
+
+  function render() {
+    const text = editor.value;
+    preview.innerHTML = marked.parse(text);
+    const lines = text.split('\n').length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    document.getElementById('chars').textContent = `文字数: ${text.length}`;
+    document.getElementById('lines').textContent = `行数: ${lines}`;
+    document.getElementById('words').textContent = `単語数: ${words}`;
+  }
+
+  editor.addEventListener('input', render);
+
+  editor.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = editor.selectionStart, en = editor.selectionEnd;
+      editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(en);
+      editor.selectionStart = editor.selectionEnd = s + 2;
+      render();
+    }
+  });
+
+  function insertMd(before, after) {
+    const s = editor.selectionStart, e = editor.selectionEnd;
+    const sel = editor.value.substring(s, e) || 'テキスト';
+    editor.value = editor.value.substring(0, s) + before + sel + after + editor.value.substring(e);
+    editor.selectionStart = s + before.length;
+    editor.selectionEnd = s + before.length + sel.length;
+    editor.focus();
+    render();
+  }
+
+  function insertLine(prefix) {
+    const s = editor.selectionStart;
+    const lineStart = editor.value.lastIndexOf('\n', s - 1) + 1;
+    editor.value = editor.value.substring(0, lineStart) + prefix + editor.value.substring(lineStart);
+    editor.selectionStart = editor.selectionEnd = lineStart + prefix.length;
+    editor.focus();
+    render();
+  }
+
+  function copyHtml() {
+    navigator.clipboard.writeText(preview.innerHTML).then(() => alert('HTMLをコピーしました'));
+  }
+
+  function downloadMd() {
+    const name = document.getElementById('filename').dataset.name || 'document.md';
+    const blob = new Blob([editor.value], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    if (!/\.(md|txt|markdown)$/i.test(file.name)) {
+      alert('.md / .txt / .markdown ファイルのみ読み込めます');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      editor.value = e.target.result;
+      render();
+      const fn = document.getElementById('filename');
+      fn.textContent = file.name;
+      fn.dataset.name = file.name;
+      document.getElementById('editor-label').textContent = 'Editor — ' + file.name;
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  // File input button
+  document.getElementById('file-input').addEventListener('change', e => {
+    loadFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  // Drag & drop on editor pane
+  const editorWrap = document.querySelector('.editor-wrap');
+  const dropHint = document.getElementById('drop-hint');
+
+  editorWrap.addEventListener('dragenter', e => {
+    e.preventDefault();
+    dropHint.style.display = 'flex';
+    editor.classList.add('dragover');
+  });
+  editorWrap.addEventListener('dragover', e => { e.preventDefault(); });
+  editorWrap.addEventListener('dragleave', e => {
+    if (!editorWrap.contains(e.relatedTarget)) {
+      dropHint.style.display = 'none';
+      editor.classList.remove('dragover');
+    }
+  });
+  editorWrap.addEventListener('drop', e => {
+    e.preventDefault();
+    dropHint.style.display = 'none';
+    editor.classList.remove('dragover');
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  // Resizable divider
+  const divider = document.getElementById('divider');
+  let dragging = false;
+  divider.addEventListener('mousedown', () => dragging = true);
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const main = document.querySelector('.main');
+    const rect = main.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    const panes = document.querySelectorAll('.pane');
+    panes[0].style.flex = 'none';
+    panes[0].style.width = Math.max(20, Math.min(80, pct)) + '%';
+    panes[1].style.flex = '1';
+  });
+  document.addEventListener('mouseup', () => dragging = false);
+
+  // Initial render
+  render();
+</script>
+</body>
+</html>
