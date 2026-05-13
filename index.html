@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Markdown Editor</title>
+<!-- OGP -->
+<meta name="description" content="インストール不要のブラウザ完結型Markdownエディタ。リアルタイムプレビュー・ファイル読み込み・自動保存対応。">
+<meta property="og:title" content="Markdown Editor">
+<meta property="og:description" content="インストール不要のブラウザ完結型Markdownエディタ。リアルタイムプレビュー・ファイル読み込み・自動保存対応。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://drmasato.github.io/markdown-editor/">
+<meta property="og:image" content="https://drmasato.github.io/markdown-editor/ogp.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Markdown Editor">
+<meta name="twitter:description" content="インストール不要のブラウザ完結型Markdownエディタ。リアルタイムプレビュー・ファイル読み込み・自動保存対応。">
+<meta name="twitter:image" content="https://drmasato.github.io/markdown-editor/ogp.png">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -242,6 +253,45 @@
     flex-direction: column;
     overflow: hidden;
   }
+
+  /* Auto-save toast */
+  #toast {
+    position: fixed;
+    bottom: 36px;
+    right: 20px;
+    background: #a6e3a1;
+    color: #1e1e2e;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Full-page drop overlay */
+  #page-drop-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(203,166,247,0.12);
+    border: 3px dashed #cba6f7;
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #cba6f7;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+  }
+
+  /* Scroll sync active indicator */
+  .sync-on { color: #a6e3a1 !important; }
 </style>
 </head>
 <body>
@@ -257,10 +307,14 @@
     <button onclick="insertLine('- ')">List</button>
     <button class="btn-open" onclick="document.getElementById('file-input').click()">ファイルを開く</button>
     <button onclick="copyHtml()">HTML コピー</button>
-    <button onclick="downloadMd()">保存</button>
+    <button onclick="downloadMd()" title="Cmd+S / Ctrl+S">保存</button>
+    <button id="sync-btn" onclick="toggleSync()" title="スクロール同期">同期: ON</button>
   </div>
   <input type="file" id="file-input" accept=".md,.txt,.markdown">
 </header>
+
+<div id="page-drop-overlay">ファイルをドロップして開く</div>
+<div id="toast">自動保存しました</div>
 
 <div class="main">
   <div class="pane">
@@ -303,11 +357,34 @@ print('Hello, World!')
 </div>
 
 <script>
-  const editor = document.getElementById('editor');
+  const editor  = document.getElementById('editor');
   const preview = document.getElementById('preview');
+  const toast   = document.getElementById('toast');
+  const syncBtn = document.getElementById('sync-btn');
+  const pageOverlay = document.getElementById('page-drop-overlay');
 
   marked.setOptions({ breaks: true, gfm: true });
 
+  // ── 2. localStorage 自動保存 ──────────────────────────────────────
+  const STORAGE_KEY = 'md-editor-content';
+  let saveTimer = null;
+  let toastTimer = null;
+
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY, editor.value);
+      showToast();
+    }, 800);
+  }
+
+  function showToast() {
+    clearTimeout(toastTimer);
+    toast.classList.add('show');
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  // ── レンダリング ───────────────────────────────────────────────────
   function render() {
     const text = editor.value;
     preview.innerHTML = marked.parse(text);
@@ -316,20 +393,48 @@ print('Hello, World!')
     document.getElementById('chars').textContent = `文字数: ${text.length}`;
     document.getElementById('lines').textContent = `行数: ${lines}`;
     document.getElementById('words').textContent = `単語数: ${words}`;
+    scheduleSave();
   }
 
   editor.addEventListener('input', render);
 
+  // ── 1. スクロール同期 ──────────────────────────────────────────────
+  let syncScroll = true;
+  let syncingFromEditor = false;
+
+  function toggleSync() {
+    syncScroll = !syncScroll;
+    syncBtn.textContent = `同期: ${syncScroll ? 'ON' : 'OFF'}`;
+    syncBtn.classList.toggle('sync-on', syncScroll);
+  }
+
+  editor.addEventListener('scroll', () => {
+    if (!syncScroll || syncingFromEditor) return;
+    const ratio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight || 1);
+    syncingFromEditor = true;
+    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
+    requestAnimationFrame(() => { syncingFromEditor = false; });
+  });
+
+  // ── 4. キーボードショートカット ──────────────────────────────────
   editor.addEventListener('keydown', e => {
+    const mod = e.metaKey || e.ctrlKey;
+
     if (e.key === 'Tab') {
       e.preventDefault();
       const s = editor.selectionStart, en = editor.selectionEnd;
       editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(en);
       editor.selectionStart = editor.selectionEnd = s + 2;
       render();
+      return;
     }
+    if (mod && e.key === 's') { e.preventDefault(); downloadMd(); return; }
+    if (mod && e.key === 'b') { e.preventDefault(); insertMd('**', '**'); return; }
+    if (mod && e.key === 'i') { e.preventDefault(); insertMd('*', '*'); return; }
+    if (mod && e.key === 'k') { e.preventDefault(); insertMd('`', '`'); return; }
   });
 
+  // ── ツールバー操作 ─────────────────────────────────────────────────
   function insertMd(before, after) {
     const s = editor.selectionStart, e = editor.selectionEnd;
     const sel = editor.value.substring(s, e) || 'テキスト';
@@ -362,6 +467,7 @@ print('Hello, World!')
     a.click();
   }
 
+  // ── ファイル読み込み ───────────────────────────────────────────────
   function loadFile(file) {
     if (!file) return;
     if (!/\.(md|txt|markdown)$/i.test(file.name)) {
@@ -369,8 +475,8 @@ print('Hello, World!')
       return;
     }
     const reader = new FileReader();
-    reader.onload = e => {
-      editor.value = e.target.result;
+    reader.onload = ev => {
+      editor.value = ev.target.result;
       render();
       const fn = document.getElementById('filename');
       fn.textContent = file.name;
@@ -380,22 +486,39 @@ print('Hello, World!')
     reader.readAsText(file, 'UTF-8');
   }
 
-  // File input button
   document.getElementById('file-input').addEventListener('change', e => {
     loadFile(e.target.files[0]);
     e.target.value = '';
   });
 
-  // Drag & drop on editor pane
+  // ── 3. ドラッグ&ドロップ（全画面対応）────────────────────────────
   const editorWrap = document.querySelector('.editor-wrap');
-  const dropHint = document.getElementById('drop-hint');
+  const dropHint   = document.getElementById('drop-hint');
+  let dragDepth = 0;
 
-  editorWrap.addEventListener('dragenter', e => {
+  document.addEventListener('dragenter', e => {
     e.preventDefault();
+    dragDepth++;
+    pageOverlay.style.display = 'flex';
+  });
+  document.addEventListener('dragover', e => { e.preventDefault(); });
+  document.addEventListener('dragleave', () => {
+    dragDepth--;
+    if (dragDepth <= 0) { dragDepth = 0; pageOverlay.style.display = 'none'; }
+  });
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    pageOverlay.style.display = 'none';
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  // エディタペイン内の独自オーバーレイ（残存）
+  editorWrap.addEventListener('dragenter', e => {
+    e.stopPropagation();
     dropHint.style.display = 'flex';
     editor.classList.add('dragover');
   });
-  editorWrap.addEventListener('dragover', e => { e.preventDefault(); });
   editorWrap.addEventListener('dragleave', e => {
     if (!editorWrap.contains(e.relatedTarget)) {
       dropHint.style.display = 'none';
@@ -403,18 +526,16 @@ print('Hello, World!')
     }
   });
   editorWrap.addEventListener('drop', e => {
-    e.preventDefault();
     dropHint.style.display = 'none';
     editor.classList.remove('dragover');
-    loadFile(e.dataTransfer.files[0]);
   });
 
-  // Resizable divider
+  // ── リサイズ ──────────────────────────────────────────────────────
   const divider = document.getElementById('divider');
-  let dragging = false;
-  divider.addEventListener('mousedown', () => dragging = true);
+  let resizing = false;
+  divider.addEventListener('mousedown', () => resizing = true);
   document.addEventListener('mousemove', e => {
-    if (!dragging) return;
+    if (!resizing) return;
     const main = document.querySelector('.main');
     const rect = main.getBoundingClientRect();
     const pct = ((e.clientX - rect.left) / rect.width) * 100;
@@ -423,9 +544,12 @@ print('Hello, World!')
     panes[0].style.width = Math.max(20, Math.min(80, pct)) + '%';
     panes[1].style.flex = '1';
   });
-  document.addEventListener('mouseup', () => dragging = false);
+  document.addEventListener('mouseup', () => resizing = false);
 
-  // Initial render
+  // ── 初期化 ────────────────────────────────────────────────────────
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) editor.value = saved;
+  syncBtn.classList.add('sync-on');
   render();
 </script>
 </body>
